@@ -14,6 +14,17 @@ from .adb_discovery import (
     AdbDiscoveryResult,
     discover_adb,
 )
+from .city_war import (
+    CityWarController,
+    CityWarScanResult,
+    ControlResult,
+    enter_city_war,
+    recognize_links_and_buildings,
+    return_after_battle,
+    return_home,
+    select_opponent_and_board,
+)
+from .screen_state import Marker, ScreenKind, ScreenState, StaticScreenRecognizer
 
 __all__ = [
     "ActionResult",
@@ -22,8 +33,20 @@ __all__ = [
     "AdbDevice",
     "AdbDiscoveryResult",
     "ClickAction",
+    "CityWarController",
+    "CityWarScanResult",
+    "ControlResult",
     "DryRunBackend",
+    "Marker",
+    "ScreenKind",
+    "ScreenState",
+    "StaticScreenRecognizer",
     "TapAction",
     "discover_adb",
+    "enter_city_war",
     "execute_action",
+    "recognize_links_and_buildings",
+    "return_after_battle",
+    "return_home",
+    "select_opponent_and_board",
 ]
