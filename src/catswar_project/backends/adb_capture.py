@@ -22,10 +22,14 @@ class AdbCaptureBackend:
         adb_serial: str,
         *,
         runner: SubprocessRun = subprocess.run,
+        instance_dir: Path | None = None,
     ) -> None:
         self.adb_path = Path(adb_path)
         self.adb_serial = adb_serial
         self.runner = runner
+        self.instance_dir = Path(instance_dir) if instance_dir is not None else None
+        if self.instance_dir is not None:
+            self.instance_dir.mkdir(parents=True, exist_ok=True)
         if not self.adb_path.exists():
             raise CaptureBackendError(f"ADB executable does not exist: {self.adb_path}")
         if not self.adb_path.is_file():
@@ -34,7 +38,12 @@ class AdbCaptureBackend:
             raise CaptureBackendError("--adb-serial is required when --capture-backend adb is used.")
         self._ensure_device_available()
 
-    def capture(self, output_path: Path) -> WindowFrame:
+    def capture(self, output_path: Path | None = None) -> WindowFrame:
+        if output_path is None:
+            if self.instance_dir is None:
+                raise CaptureBackendError("No output path given and no instance-dir configured for ADB capture.")
+            stamp = __import__("datetime").datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            output_path = self.instance_dir / f"screenshot_{self.adb_serial}_{stamp}.png"
         command = [
             str(self.adb_path),
             "-s",

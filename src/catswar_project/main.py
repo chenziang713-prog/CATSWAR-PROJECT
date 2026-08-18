@@ -13,12 +13,28 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--discover-adb", action="store_true", help="Scan for adb.exe and exit.")
     parser.add_argument("--adb-path", type=Path, default=None, help="Path to adb.exe.")
     parser.add_argument("--adb-serial", default=None, help="Connected adb serial.")
-    parser.add_argument("--capture", type=Path, default=None, help="Save an adb screenshot to this path.")
+    parser.add_argument("--instance-dir", type=Path, default=None, help="Per-emulator instance folder for screenshots/output; also serves as the instance id.")
+    parser.add_argument("--cmd-dir", type=Path, default=None, help="Shared command folder read by the emulator (optional; reserved for command lookup).")
+    parser.add_argument("--capture", type=Path, default=None, help="Save an adb screenshot to this path. If both given, its parent must equal --instance-dir.")
     parser.add_argument("--tap", nargs=2, type=int, metavar=("X", "Y"), help="Run one ADB tap.")
     parser.add_argument("--back", action="store_true", help="Send one BACK keyevent.")
     parser.add_argument("--wait", type=float, default=None, help="Wait for N seconds.")
     parser.add_argument("--dry-run", action="store_true", help="Use the dry-run backend for actions.")
     return parser
+
+
+def validate_capture_paths(capture: Path | None, instance_dir: Path | None) -> None:
+    """Validate the relationship between --capture and --instance-dir.
+
+    Either path may be omitted. When both are given, the parent directory of
+    --capture must equal --instance-dir. Raises SystemExit otherwise.
+    """
+    if capture is not None and instance_dir is not None:
+        if capture.parent.resolve() != instance_dir.resolve():
+            raise SystemExit(
+                "--capture and --instance-dir do not correspond: "
+                f"parent of --capture ({capture.parent}) must equal --instance-dir ({instance_dir})."
+            )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -34,10 +50,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"recommended: {result.recommended.adb_path}")
         return 0
 
-    if args.capture is not None:
+    if args.capture is not None or args.instance_dir is not None:
+        validate_capture_paths(args.capture, args.instance_dir)
         if args.adb_path is None or args.adb_serial is None:
-            raise SystemExit("--adb-path and --adb-serial are required for --capture.")
-        backend = AdbCaptureBackend(args.adb_path, args.adb_serial)
+            raise SystemExit("--adb-path and --adb-serial are required for capture.")
+        backend = AdbCaptureBackend(args.adb_path, args.adb_serial, instance_dir=args.instance_dir)
         backend.capture(args.capture)
         return 0
 
@@ -47,7 +64,12 @@ def main(argv: list[str] | None = None) -> int:
         else:
             if args.adb_path is None or args.adb_serial is None:
                 raise SystemExit("--adb-path and --adb-serial are required for real actions.")
-            backend = AdbActionBackend(adb_path=args.adb_path, adb_serial=args.adb_serial)
+            backend = AdbActionBackend(
+                adb_path=args.adb_path,
+                adb_serial=args.adb_serial,
+                instance_dir=args.instance_dir,
+                cmd_dir=args.cmd_dir,
+            )
         if args.tap:
             x, y = args.tap
             execute_action({"name": "tap", "params": {"x": x, "y": y}, "reason": "cli"}, backend, dry_run=args.dry_run)
