@@ -24,6 +24,7 @@ def create_capture_backend(
     adb_path: Path | None = None,
     adb_serial: str | None = None,
     replay_screens: Sequence[Path] | None = None,
+    instance_dir: Path | None = None,
 ) -> CaptureBackend:
     if kind == "fullscreen":
         from ..window_capture import WindowsDesktopCapture
@@ -36,5 +37,5 @@ def create_capture_backend(
             raise CaptureBackendError("--adb-serial is required when --capture-backend adb is used.")
         from .adb_capture import AdbCaptureBackend
 
-        return AdbCaptureBackend(adb_path, adb_serial)
+        return AdbCaptureBackend(adb_path, adb_serial, instance_dir=instance_dir)
     raise CaptureBackendError(f"Unsupported capture backend: {kind}")

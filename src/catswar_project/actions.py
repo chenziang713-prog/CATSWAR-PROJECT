@@ -194,6 +194,8 @@ class AdbActionBackend:
         log_file: Path | None = None,
         runner: SubprocessRun = subprocess.run,
         sleep: Callable[[float], None] = time.sleep,
+        instance_dir: Path | None = None,
+        cmd_dir: Path | None = None,
     ) -> None:
         self.dry_run = False
         self.adb_path = Path(adb_path)
@@ -204,9 +206,16 @@ class AdbActionBackend:
         self.stop_file = stop_file
         self.runner = runner
         self.sleep = sleep
+        self.instance_dir = Path(instance_dir) if instance_dir is not None else None
+        self.cmd_dir = Path(cmd_dir) if cmd_dir is not None else None
         self.action_count = 0
         self.last_click_at = 0.0
         self._log_handle: TextIO | None = None
+
+        if self.instance_dir is not None:
+            self.instance_dir.mkdir(parents=True, exist_ok=True)
+        if self.cmd_dir is not None and not self.cmd_dir.exists():
+            raise ValueError(f"cmd_dir does not exist: {self.cmd_dir}")
 
         if self.max_actions <= 0:
             raise ValueError("max_actions must be greater than 0.")
