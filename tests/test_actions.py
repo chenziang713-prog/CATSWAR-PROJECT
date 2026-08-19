@@ -1,129 +1,74 @@
 from __future__ import annotations
 
 import subprocess
-from pathlib import Path
 
-from catswar_project.actions import (
-    ActionResult,
-    AdbActionBackend,
-    DryRunBackend,
-    execute_action,
-)
+from catswar_project.actions import ActionResult, AdbActionBackend, execute_action
 
 
-def test_wait_dry_run_returns_complete_result_without_sleeping() -> None:
-    backend = DryRunBackend()
-
-    result = execute_action(
-        {"name": "wait", "params": {"seconds": 10}, "reason": "dry_wait"},
-        backend,
-        dry_run=True,
-    )
-
-    assert result.success is True
-    assert result.action == "wait"
-    assert result.dry_run is True
-    assert result.clicked_pos is None
-    assert result.error == ""
-    assert result.duration < 0.5
-
-
-def test_wait_non_dry_run_sleeps_with_reasonable_cap(tmp_path: Path) -> None:
+def make_backend(tmp_path, sleeps=None):
     adb = tmp_path / "adb.exe"
     adb.touch()
-    sleeps: list[float] = []
-    backend = AdbActionBackend(
+    return AdbActionBackend(
         adb_path=adb,
         adb_serial="emulator-5556",
         runner=lambda command, **_: subprocess.CompletedProcess(command, 0, b"", b""),
-        sleep=sleeps.append,
+        sleep=(sleeps if sleeps is not None else (lambda _: None)),
     )
 
-    result = execute_action(
-        {"name": "wait", "params": {"seconds": 10}, "reason": "real_wait"},
-        backend,
-        dry_run=False,
-        max_wait_seconds=0.25,
-    )
 
+def test_wait_uses_real_backend_with_maximum_cap(tmp_path) -> None:
+    sleeps: list[float] = []
+    backend = make_backend(tmp_path, sleeps.append)
+    result = execute_action({"name": "wait", "params": {"seconds": 10}}, backend, max_wait_seconds=0.25)
     assert sleeps == [0.25]
     assert result.success is True
-    assert result.action == "wait"
-    assert result.dry_run is False
-    assert result.error == ""
 
 
-def test_press_back_dry_run_never_calls_adb() -> None:
-    class Backend(DryRunBackend):
-        def keyevent(self, keycode: str, reason: str = "") -> ActionResult:
-            raise AssertionError("dry-run press_back must not call keyevent")
-
-    backend = Backend()
-
-    result = execute_action({"name": "press_back", "reason": "find_home"}, backend, dry_run=True)
-
+def test_press_back_sends_real_adb_keyevent(tmp_path) -> None:
+    commands: list[list[str]] = []
+    adb = tmp_path / "adb.exe"
+    adb.touch()
+    backend = AdbActionBackend(
+        adb_path=adb,
+        adb_serial="emulator-5556",
+        runner=lambda command, **_: commands.append(command) or subprocess.CompletedProcess(command, 0, b"", b""),
+        sleep=lambda _: None,
+    )
+    result = execute_action("press_back", backend)
     assert result.success is True
-    assert result.action == "press_back"
-    assert result.dry_run is True
-    assert result.result == "skipped_dry_run"
-    assert backend.action_count == 0
+    assert commands[0][-3:] == ["input", "keyevent", "BACK"]
 
 
-def test_no_action_does_nothing() -> None:
-    backend = DryRunBackend()
-
-    result = execute_action("no_action", backend, dry_run=True)
-
-    assert result.to_dict() == {
-        "success": True,
-        "action": "no_action",
-        "dry_run": True,
-        "message": "no_action",
-        "clicked_pos": None,
-        "duration": 0.0,
-        "error": None,
-        "action_type": "no_action",
-        "result": "no_action",
-        "reason": "",
-    }
-    assert backend.action_count == 0
+def test_tap_sends_real_adb_tap(tmp_path) -> None:
+    commands: list[list[str]] = []
+    adb = tmp_path / "adb.exe"
+    adb.touch()
+    backend = AdbActionBackend(
+        adb_path=adb,
+        adb_serial="emulator-5556",
+        runner=lambda command, **_: commands.append(command) or subprocess.CompletedProcess(command, 0, b"", b""),
+        sleep=lambda _: None,
+    )
+    result = execute_action({"name": "tap", "params": {"x": 100, "y": 200}}, backend)
+    assert result.success is True
+    assert commands[0][-4:] == ["input", "tap", "100", "200"]
 
 
-def test_unknown_action_returns_complete_error_result() -> None:
-    result = execute_action({"name": "tap_point", "reason": "not_yet"}, DryRunBackend(), dry_run=True)
+def test_no_action_does_nothing(tmp_path) -> None:
+    result = execute_action("no_action", make_backend(tmp_path))
+    assert result.success is True
 
+
+def test_unknown_action_returns_error(tmp_path) -> None:
+    result = execute_action({"name": "tap_point", "reason": "not_yet"}, make_backend(tmp_path))
     assert result.success is False
     assert result.action == "tap_point"
-    assert result.dry_run is True
     assert result.error == "unknown_action"
-    assert result.clicked_pos is None
-
-
-def test_string_and_dict_action_inputs_are_supported() -> None:
-    backend = DryRunBackend()
-
-    string_result = execute_action("no_action", backend, dry_run=True)
-    dict_result = execute_action({"name": "no_action", "params": {}, "reason": "same"}, backend)
-
-    assert string_result.action == "no_action"
-    assert dict_result.action == "no_action"
-    assert dict_result.reason == "same"
 
 
 def test_action_result_has_complete_fields() -> None:
     result = ActionResult("wait", "executed", "reason")
-
-    payload = result.to_dict()
-
-    assert set(payload) == {
-        "success",
-        "action",
-        "dry_run",
-        "message",
-        "clicked_pos",
-        "duration",
-        "error",
-        "action_type",
-        "result",
-        "reason",
+    assert set(result.to_dict()) == {
+        "success", "action", "message", "clicked_pos", "duration",
+        "error", "action_type", "result", "reason",
     }

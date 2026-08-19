@@ -4,7 +4,6 @@ from .actions import (
     ActionResult,
     AdbActionBackend,
     ClickAction,
-    DryRunBackend,
     TapAction,
     execute_action,
 )
@@ -44,7 +43,6 @@ __all__ = [
     "CityWarController",
     "CityWarScanResult",
     "ControlResult",
-    "DryRunBackend",
     "Marker",
     "ScreenKind",
     "ScreenState",

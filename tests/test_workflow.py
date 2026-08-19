@@ -10,7 +10,6 @@ from catswar_project.workflow import CityWarStep, CityWarWorkflow
 
 
 class RecordingBackend:
-    dry_run = True
 
     def __init__(self) -> None:
         self.action_count = 0
@@ -24,21 +23,20 @@ class RecordingBackend:
         self.action_count += 1
         self.taps.append(action)
         return ActionResult(
-            "dry_run_click",
+            "adb_tap",
             "executed",
             action.reason,
             action="tap",
-            dry_run=True,
             clicked_pos=(action.x, action.y),
         )
 
     def wait(self, seconds: float, reason: str = "") -> ActionResult:
-        return ActionResult("wait", "skipped_wait", reason, action="wait", dry_run=True)
+        return ActionResult("wait", "executed", reason, action="wait")
 
     def keyevent(self, keycode: str, reason: str = "") -> ActionResult:
         self.action_count += 1
         self.keyevents.append(keycode)
-        return ActionResult("dry_run_keyevent", "executed", reason, action="press_back", dry_run=True)
+        return ActionResult("adb_keyevent", "executed", reason, action="press_back")
 
     def reset_cycle(self) -> None:
         self.action_count = 0

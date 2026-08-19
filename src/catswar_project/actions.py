@@ -34,7 +34,6 @@ class ActionResult:
     notes: str = ""
     success: bool | None = None
     action: str = ""
-    dry_run: bool | None = None
     message: str = ""
     clicked_pos: tuple[int, int] | None = None
     duration: float = 0.0
@@ -45,12 +44,10 @@ class ActionResult:
             object.__setattr__(
                 self,
                 "success",
-                self.result in {"executed", "skipped_wait", "skipped_dry_run", "no_action"},
+                self.result in {"executed", "no_action"},
             )
         if not self.action:
             object.__setattr__(self, "action", self.action_type)
-        if self.dry_run is None:
-            object.__setattr__(self, "dry_run", self.action_type.startswith("dry_run"))
         if not self.message:
             object.__setattr__(self, "message", self.notes or self.result)
 
@@ -58,7 +55,6 @@ class ActionResult:
         return {
             "success": bool(self.success),
             "action": self.action,
-            "dry_run": bool(self.dry_run),
             "message": self.message,
             "clicked_pos": None if self.clicked_pos is None else list(self.clicked_pos),
             "duration": self.duration,
@@ -90,94 +86,6 @@ class ActionBackend(Protocol):
     def reset_cycle(self) -> None: ...
 
 
-class DryRunBackend:
-    def __init__(self, log_file: Path | None = None, max_actions: int | None = None) -> None:
-        self.dry_run = True
-        self.action_count = 0
-        self.max_actions = max_actions
-        self._log_handle: TextIO | None = None
-        if self.max_actions is not None and self.max_actions <= 0:
-            raise ValueError("max_actions must be greater than 0.")
-        if log_file is not None:
-            log_file.parent.mkdir(parents=True, exist_ok=True)
-            self._log_handle = log_file.open("a", encoding="utf-8")
-
-    def click(self, action: ClickAction) -> ActionResult:
-        if self.max_actions is not None and self.action_count >= self.max_actions:
-            self._emit(f"Max actions reached ({self.max_actions}), skipping dry-run click.")
-            return ActionResult("dry_run_click", "skipped_max_actions_reached", action.reason)
-        self.action_count += 1
-        self._emit(
-            "DRY RUN click "
-            f"x={action.x} y={action.y} confidence={action.confidence:.3f} "
-            f"reason={action.reason}"
-        )
-        return ActionResult("dry_run_click", "executed", action.reason)
-
-    def tap(self, action: TapAction) -> ActionResult:
-        return self.click(
-            ClickAction(
-                x=action.x,
-                y=action.y,
-                confidence=action.confidence,
-                reason=action.reason,
-                min_confidence_override=action.min_confidence_override,
-            )
-        )
-
-    def wait(self, seconds: float, reason: str = "") -> ActionResult:
-        self._emit(f"DRY RUN wait seconds={seconds:.2f} reason={reason}")
-        return ActionResult(
-            "wait",
-            "skipped_wait",
-            reason,
-            success=True,
-            action="wait",
-            dry_run=True,
-            message="dry_run_skipped_wait",
-            duration=0.0,
-        )
-
-    def keyevent(self, keycode: str, reason: str = "") -> ActionResult:
-        if self.max_actions is not None and self.action_count >= self.max_actions:
-            self._emit(f"Max actions reached ({self.max_actions}), skipping dry-run keyevent.")
-            return ActionResult(
-                "dry_run_keyevent",
-                "skipped_max_actions_reached",
-                reason,
-                success=False,
-                action="press_back" if keycode.upper() == "BACK" else "keyevent",
-                dry_run=True,
-                message="max_actions_reached",
-            )
-        self.action_count += 1
-        self._emit(f"DRY RUN keyevent keycode={keycode} reason={reason}")
-        return ActionResult(
-            "dry_run_keyevent",
-            "executed",
-            reason,
-            success=True,
-            action="press_back" if keycode.upper() == "BACK" else "keyevent",
-            dry_run=True,
-            message="dry_run_keyevent",
-        )
-
-    def reset_cycle(self) -> None:
-        self.action_count = 0
-
-    def close(self) -> None:
-        if self._log_handle is not None:
-            self._log_handle.close()
-            self._log_handle = None
-
-    def _emit(self, message: str) -> None:
-        print(message)
-        if self._log_handle is not None:
-            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-            self._log_handle.write(f"{timestamp} {message}\n")
-            self._log_handle.flush()
-
-
 SubprocessRun = Callable[..., subprocess.CompletedProcess[bytes]]
 
 
@@ -197,7 +105,6 @@ class AdbActionBackend:
         instance_dir: Path | None = None,
         cmd_dir: Path | None = None,
     ) -> None:
-        self.dry_run = False
         self.adb_path = Path(adb_path)
         self.adb_serial = adb_serial
         self.max_actions = max_actions
@@ -311,7 +218,6 @@ class AdbActionBackend:
             reason,
             success=True,
             action="wait",
-            dry_run=False,
             message="wait_finished",
             duration=time.monotonic() - started,
         )
@@ -375,87 +281,6 @@ class AdbActionBackend:
             self._log_handle.flush()
 
 
-class ActionExecutor:
-    def __init__(
-        self,
-        dry_run: bool = True,
-        *,
-        max_actions: int = 1,
-        repeat_actions: int = 1,
-        click_cooldown: float = 1.0,
-        stop_file: Path | None = None,
-        log_file: Path | None = None,
-    ) -> None:
-        self.dry_run = dry_run
-        self.max_actions = max_actions
-        self.repeat_actions = repeat_actions
-        self.click_cooldown = click_cooldown
-        self.stop_file = stop_file
-        self.action_count = 0
-        self.last_click_at = 0.0
-        self._log_handle: TextIO | None = None
-
-        if self.max_actions <= 0:
-            raise ValueError("max_actions must be greater than 0.")
-        if self.repeat_actions <= 0:
-            raise ValueError("repeat_actions must be greater than 0.")
-        if self.click_cooldown < 0:
-            raise ValueError("click_cooldown must not be negative.")
-        if log_file is not None:
-            log_file.parent.mkdir(parents=True, exist_ok=True)
-            self._log_handle = log_file.open("a", encoding="utf-8")
-
-    def click(self, action: ClickAction) -> None:
-        for index in range(self.repeat_actions):
-            if not self._click_once(action, index + 1):
-                return
-
-    def _click_once(self, action: ClickAction, repeat_index: int) -> bool:
-        if self.stop_file is not None and self.stop_file.exists():
-            self._emit(f"STOP file present, skipping click: {self.stop_file}")
-            return False
-        if self.action_count >= self.max_actions:
-            self._emit(f"Max actions reached ({self.max_actions}), skipping click.")
-            return False
-
-        now = time.monotonic()
-        elapsed = now - self.last_click_at
-        if self.action_count > 0 and elapsed < self.click_cooldown:
-            wait_seconds = self.click_cooldown - elapsed
-            self._emit(f"Waiting {wait_seconds:.2f}s for click cooldown.")
-            time.sleep(wait_seconds)
-            now = time.monotonic()
-
-        if self.dry_run:
-            self._emit(
-                "DRY RUN click "
-                f"({action.x}, {action.y}) confidence={action.confidence:.3f} "
-                f"repeat={repeat_index}/{self.repeat_actions} "
-                f"reason={action.reason}"
-            )
-            self.action_count += 1
-            self.last_click_at = now
-            return True
-
-        self._emit(
-            "REAL click requested but no input backend is enabled; "
-            "staying in dry-run-only mode."
-        )
-        return False
-
-    def close(self) -> None:
-        if self._log_handle is not None:
-            self._log_handle.close()
-            self._log_handle = None
-
-    def _emit(self, message: str) -> None:
-        print(message)
-        if self._log_handle is not None:
-            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-            self._log_handle.write(f"{timestamp} {message}\n")
-            self._log_handle.flush()
-
-
 def normalize_action_input(action: str | Mapping[str, Any] | ActionInput) -> ActionInput:
     if isinstance(action, ActionInput):
         return action
@@ -475,38 +300,24 @@ def execute_action(
     *,
     state_result: Mapping[str, Any] | None = None,
     allowed_markers: set[str] | frozenset[str] | None = None,
-    dry_run: bool | None = None,
     max_wait_seconds: float = 5.0,
-    dry_run_max_wait_seconds: float = 0.05,
 ) -> ActionResult:
     action_input = normalize_action_input(action)
     name = action_input.name
     params = action_input.params or {}
     reason = action_input.reason
-    is_dry_run = bool(getattr(backend, "dry_run", False)) if dry_run is None else dry_run
-    backend_is_dry_run = bool(getattr(backend, "dry_run", False))
-
     if name == "no_action":
-        return ActionResult("no_action", "no_action", reason, action="no_action", dry_run=is_dry_run)
+        return ActionResult("no_action", "no_action", reason, action="no_action")
     if name == "wait":
         seconds = float(params.get("seconds", 0.0))
-        if is_dry_run:
-            seconds = min(seconds, dry_run_max_wait_seconds)
-        elif not backend_is_dry_run:
-            seconds = min(seconds, max_wait_seconds)
-        if is_dry_run and not backend_is_dry_run:
-            return ActionResult("wait", "skipped_dry_run", reason, action="wait", dry_run=True)
+        seconds = min(seconds, max_wait_seconds)
         return backend.wait(seconds, reason)
     if name == "press_back":
-        if is_dry_run:
-            return ActionResult("press_back", "skipped_dry_run", reason, action="press_back", dry_run=True)
         return backend.keyevent("BACK", reason)
     if name in {"tap", "click"}:
         x = int(params.get("x", 0))
         y = int(params.get("y", 0))
         confidence = float(params.get("confidence", 1.0))
-        if is_dry_run and not backend_is_dry_run:
-            return ActionResult(name, "skipped_dry_run", reason, action=name, dry_run=True)
         return backend.tap(TapAction(x=x, y=y, confidence=confidence, reason=reason))
 
     return ActionResult(
@@ -515,7 +326,6 @@ def execute_action(
         reason,
         success=False,
         action=name or "unknown_action",
-        dry_run=is_dry_run,
         message="unknown_action",
         error="unknown_action",
     )
