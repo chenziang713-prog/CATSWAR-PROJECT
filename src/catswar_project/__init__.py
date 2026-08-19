@@ -25,6 +25,14 @@ from .city_war import (
     select_opponent_and_board,
 )
 from .screen_state import Marker, ScreenKind, ScreenState, StaticScreenRecognizer
+from .run_log import RunEvent, RunRecorder
+from .workflow import (
+    DEFAULT_CITY_WAR_BOOTSTRAP_PLAN,
+    CityWarStep,
+    CityWarWorkflow,
+    StepTransition,
+    WorkflowResult,
+)
 
 __all__ = [
     "ActionResult",
@@ -41,7 +49,14 @@ __all__ = [
     "ScreenKind",
     "ScreenState",
     "StaticScreenRecognizer",
+    "RunEvent",
+    "RunRecorder",
     "TapAction",
+    "CityWarStep",
+    "CityWarWorkflow",
+    "DEFAULT_CITY_WAR_BOOTSTRAP_PLAN",
+    "StepTransition",
+    "WorkflowResult",
     "discover_adb",
     "enter_city_war",
     "execute_action",

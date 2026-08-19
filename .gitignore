@@ -3,4 +3,5 @@ __pycache__/
 .pytest_cache/
 output/
 _pytmp/
+.idea/
 *.pyc
