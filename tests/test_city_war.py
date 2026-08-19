@@ -14,11 +14,13 @@ from catswar_project.screen_state import Marker, ScreenKind, ScreenState, Static
 
 class RecordingBackend:
 
-    def __init__(self) -> None:
+    def __init__(self, *, app_foreground: bool = True) -> None:
         self.action_count = 0
+        self.app_foreground = app_foreground
         self.taps: list[TapAction] = []
         self.keyevents: list[str] = []
         self.waits: list[float] = []
+        self.launches: list[tuple[str, str]] = []
 
     def click(self, action):
         return self.tap(action)
@@ -43,6 +45,14 @@ class RecordingBackend:
         self.keyevents.append(keycode)
         return ActionResult("adb_keyevent", "executed", reason, action="press_back")
 
+    def is_app_foreground(self, package_name: str, activity_name: str) -> bool:
+        return self.app_foreground
+
+    def launch_app(self, package_name: str, activity_name: str, reason: str = "") -> ActionResult:
+        self.action_count += 1
+        self.launches.append((package_name, activity_name))
+        return ActionResult("adb_launch_app", "executed", reason, action="launch_app", message="app_launched")
+
     def reset_cycle(self) -> None:
         self.action_count = 0
 
@@ -51,8 +61,10 @@ def marker(name: str, x: int = 100, y: int = 100, confidence: float = 0.95) -> M
     return Marker(name=name, confidence=confidence, center=(x, y))
 
 
-def controller(states: list[ScreenState]) -> tuple[CityWarController, RecordingBackend]:
-    backend = RecordingBackend()
+def controller(
+    states: list[ScreenState], *, app_foreground: bool = True
+) -> tuple[CityWarController, RecordingBackend]:
+    backend = RecordingBackend(app_foreground=app_foreground)
     return CityWarController(recognizer=StaticScreenRecognizer(states), backend=backend), backend
 
 
@@ -80,6 +92,61 @@ def test_return_home_noops_when_already_home() -> None:
     assert result.success is True
     assert result.action_result.action == "no_action"
     assert backend.action_count == 0
+
+
+def test_return_home_launches_app_when_not_foreground() -> None:
+    ctrl, backend = controller(
+        [
+            ScreenState(ScreenKind.CITY_WAR),
+            ScreenState(ScreenKind.HOME, markers=(marker("home_marker"),)),
+        ],
+        app_foreground=False,
+    )
+
+    result = return_home(ctrl)
+
+    assert result.success is True
+    assert result.message == "home_detected"
+    assert backend.launches == [("com.zeptolab.cats.google", "com.zeptolab.cats.CATSActivity")]
+    assert backend.keyevents == ["BACK"]
+
+
+def test_return_home_skips_launch_when_app_already_foreground() -> None:
+    ctrl, backend = controller(
+        [
+            ScreenState(ScreenKind.CITY_WAR),
+            ScreenState(ScreenKind.HOME, markers=(marker("home_marker"),)),
+        ],
+        app_foreground=True,
+    )
+
+    result = return_home(ctrl)
+
+    assert result.success is True
+    assert backend.launches == []
+    assert backend.keyevents == ["BACK"]
+
+
+def test_return_home_fails_when_app_launch_fails() -> None:
+    class FailingBackend(RecordingBackend):
+        def is_app_foreground(self, package_name: str, activity_name: str) -> bool:
+            return False
+
+        def launch_app(self, package_name: str, activity_name: str, reason: str = "") -> ActionResult:
+            self.action_count += 1
+            return ActionResult("adb_launch_app", "adb_launch_failed", reason, action="launch_app")
+
+    backend = FailingBackend(app_foreground=False)
+    ctrl = CityWarController(
+        recognizer=StaticScreenRecognizer([ScreenState(ScreenKind.CITY_WAR)]),
+        backend=backend,
+    )
+
+    result = return_home(ctrl)
+
+    assert result.success is False
+    assert result.message == "app_not_foreground"
+    assert backend.keyevents == []
 
 
 def test_enter_city_war_taps_entry_and_confirms_city_war() -> None:

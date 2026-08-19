@@ -13,8 +13,10 @@ class RecordingBackend:
 
     def __init__(self) -> None:
         self.action_count = 0
+        self.app_foreground = True
         self.taps: list[TapAction] = []
         self.keyevents: list[str] = []
+        self.launches: list[tuple[str, str]] = []
 
     def click(self, action):
         return self.tap(action)
@@ -37,6 +39,14 @@ class RecordingBackend:
         self.action_count += 1
         self.keyevents.append(keycode)
         return ActionResult("adb_keyevent", "executed", reason, action="press_back")
+
+    def is_app_foreground(self, package_name: str, activity_name: str) -> bool:
+        return self.app_foreground
+
+    def launch_app(self, package_name: str, activity_name: str, reason: str = "") -> ActionResult:
+        self.action_count += 1
+        self.launches.append((package_name, activity_name))
+        return ActionResult("adb_launch_app", "executed", reason, action="launch_app", message="app_launched")
 
     def reset_cycle(self) -> None:
         self.action_count = 0
