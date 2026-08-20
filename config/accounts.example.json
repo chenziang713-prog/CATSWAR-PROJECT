@@ -1,0 +1,28 @@
+{
+  "adb_path": "D:/leidian/LDPlayer9/adb.exe",
+  "ldplayer_path": "D:/leidian/LDPlayer9",
+  "launch_command": [
+    "D:/leidian/ldmutiplayer/dnmultiplayerex.exe",
+    "--instance",
+    "{instance}"
+  ],
+  "concurrency": 3,
+  "omni_parser_url": "http://127.0.0.1:8000/parse/",
+  "output_dir": "output",
+  "screenshot_dir": "output/screenshots",
+  "stop_file": "output/STOP",
+  "retry_limit": 3,
+  "wait_timeout": 180,
+  "poll_interval": 2,
+  "safety_mode": "aggressive",
+  "resume_run_id": null,
+  "accounts": [
+    {
+      "id": "account-01",
+      "name": "账号1",
+      "serial": "127.0.0.1:5717",
+      "emulator_instance": "instance-1",
+      "enabled": true
+    }
+  ]
+}

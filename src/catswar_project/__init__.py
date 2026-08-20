@@ -24,6 +24,18 @@ from .city_war import (
     select_opponent_and_board,
 )
 from .screen_state import Marker, ScreenKind, ScreenState, StaticScreenRecognizer
+from .automation import AccountAutomationResult, AutomationOptions, CityWarAutomation
+from .config import AccountConfig, AppConfig, load_config
+from .scheduler import AccountScheduler, SchedulerResult
+from .strategy import BuildingTarget, VehicleTarget, required_vehicles
+from .vision import OmniParserClient, OmniParserRecognizer, VisionError
+from .replay import (
+    ReplayParserClient,
+    load_memory_frames,
+    load_memory_replay,
+    load_replay_client,
+    replay_recognizer,
+)
 from .run_log import RunEvent, RunRecorder
 from .workflow import (
     DEFAULT_CITY_WAR_BOOTSTRAP_PLAN,
@@ -62,4 +74,23 @@ __all__ = [
     "return_after_battle",
     "return_home",
     "select_opponent_and_board",
+    "AccountAutomationResult",
+    "AutomationOptions",
+    "CityWarAutomation",
+    "AccountConfig",
+    "AppConfig",
+    "load_config",
+    "AccountScheduler",
+    "SchedulerResult",
+    "BuildingTarget",
+    "VehicleTarget",
+    "required_vehicles",
+    "OmniParserClient",
+    "OmniParserRecognizer",
+    "VisionError",
+    "ReplayParserClient",
+    "load_memory_frames",
+    "load_memory_replay",
+    "load_replay_client",
+    "replay_recognizer",
 ]

@@ -51,6 +51,21 @@ class RunRecorder:
         )
         return path
 
+    def write_checkpoint(self, payload: dict[str, Any]) -> Path:
+        path = self.run_dir / "checkpoint.json"
+        path.write_text(
+            json.dumps(_to_jsonable(payload), ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        return path
+
+    @staticmethod
+    def load_checkpoint(output_root: Path, run_id: str) -> dict[str, Any] | None:
+        path = output_root / "runs" / run_id / "checkpoint.json"
+        if not path.exists():
+            return None
+        return json.loads(path.read_text(encoding="utf-8"))
+
 
 def _timestamp_id() -> str:
     return datetime.now().strftime("%Y%m%d-%H%M%S")

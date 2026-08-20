@@ -5,3 +5,7 @@ output/
 _pytmp/
 .idea/
 *.pyc
+build/
+dist/
+release/
+*.egg-info/

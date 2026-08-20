@@ -5,11 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "catswar-project"
 version = "0.1.0"
-description = "CATS WAR prototype focused on ADB discovery and basic control."
+description = "CATS WAR multi-account city war automation."
 requires-python = ">=3.11"
 dependencies = [
     "pillow>=10.0",
 ]
+
+[project.scripts]
+catswar = "catswar_project.main:main"
 
 [project.optional-dependencies]
 dev = [
