@@ -13,6 +13,7 @@ dependencies = [
 
 [project.scripts]
 catswar = "catswar_project.main:main"
+catswar-gui = "catswar_project.gui:main"
 
 [project.optional-dependencies]
 dev = [

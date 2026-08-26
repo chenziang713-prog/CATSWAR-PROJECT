@@ -17,6 +17,10 @@ when the command is provided and leaves them running after completion.
 
 ## Commands
 
+For Windows users, the desktop front end can be started with `uv run catswar
+gui` or by double-clicking `start_gui.cmd`. See `docs/gui.md` for the setup
+steps.
+
 ```text
 catswar run --config config/accounts.json
 catswar run --config config/accounts.json --select

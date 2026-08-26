@@ -61,6 +61,10 @@ def validate_capture_paths(capture: Path | None, instance_dir: Path | None) -> N
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:]) if argv is None else list(argv)
+    if argv and argv[0] == "gui":
+        from .gui import main as gui_main
+
+        return gui_main(argv[1:])
     if argv and argv[0] in {"run", "inspect", "stop"}:
         return _automation_main(argv)
     parser = build_parser()
