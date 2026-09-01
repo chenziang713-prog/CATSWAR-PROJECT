@@ -83,10 +83,22 @@ class ActionBackend(Protocol):
 
     def keyevent(self, keycode: str, reason: str = "") -> ActionResult: ...
 
+    def is_app_foreground(self, package_name: str, activity_name: str) -> bool: ...
+
+    def launch_app(self, package_name: str, activity_name: str, reason: str = "") -> ActionResult: ...
+
     def reset_cycle(self) -> None: ...
 
 
 SubprocessRun = Callable[..., subprocess.CompletedProcess[bytes]]
+
+
+def _decode(value: bytes | str | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    return value.decode("utf-8", errors="replace")
 
 
 class AdbActionBackend:
@@ -256,6 +268,64 @@ class AdbActionBackend:
         self.last_click_at = now
         self._emit(f"ADB keyevent keycode={keycode} reason={reason}")
         return ActionResult("adb_keyevent", "executed", reason)
+
+    def is_app_foreground(self, package_name: str, activity_name: str) -> bool:
+        if not package_name.strip():
+            raise ValueError("package_name must not be empty.")
+        command = [
+            str(self.adb_path),
+            "-s",
+            self.adb_serial,
+            "shell",
+            "dumpsys",
+            "activity",
+            "activities",
+        ]
+        result = self._run(command)
+        if result.returncode != 0:
+            self._emit(f"ADB dumpsys failed: {result.stderr or result.returncode}")
+            return False
+        output = _decode(result.stdout)
+        target = f"{package_name}/{activity_name}"
+        return target in output or package_name in output
+
+    def launch_app(self, package_name: str, activity_name: str, reason: str = "") -> ActionResult:
+        if self.stop_file is not None and self.stop_file.exists():
+            self._emit(f"STOP file present, skipping app launch: {self.stop_file}")
+            return ActionResult("adb_launch_app", "skipped_stop_file", reason)
+        if self.action_count >= self.max_actions:
+            self._emit(f"Max actions reached ({self.max_actions}), skipping app launch.")
+            return ActionResult("adb_launch_app", "skipped_max_actions_reached", reason)
+        if not package_name.strip():
+            raise ValueError("package_name must not be empty.")
+        if not activity_name.strip():
+            raise ValueError("activity_name must not be empty.")
+
+        command = [
+            str(self.adb_path),
+            "-s",
+            self.adb_serial,
+            "shell",
+            "am",
+            "start",
+            "-n",
+            f"{package_name}/{activity_name}",
+        ]
+        result = self._run(command)
+        if result.returncode != 0:
+            self._emit(f"ADB app launch failed: {result.stderr or result.returncode}")
+            return ActionResult("adb_launch_app", "adb_launch_failed", reason)
+
+        self.action_count += 1
+        self._emit(f"ADB launch app package={package_name} activity={activity_name} reason={reason}")
+        return ActionResult(
+            "adb_launch_app",
+            "executed",
+            reason,
+            success=True,
+            action="launch_app",
+            message="app_launched",
+        )
 
     def reset_cycle(self) -> None:
         self.action_count = 0

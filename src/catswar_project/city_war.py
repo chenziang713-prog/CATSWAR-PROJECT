@@ -16,6 +16,9 @@ OPPONENT_MARKERS = ("opponent", "enemy", "target_player")
 VEHICLE_MARKERS = ("vehicle", "car", "board_vehicle_button", "deploy_button")
 BATTLE_RESULT_MARKERS = ("battle_result", "victory", "defeat", "result_confirm_button")
 
+APP_PACKAGE = "com.zeptolab.cats.google"
+APP_ACTIVITY = "com.zeptolab.cats.CATSActivity"
+
 
 @dataclass(frozen=True)
 class ControlResult:
@@ -44,12 +47,28 @@ class CityWarController:
         screenshot_provider: Callable[[], object] | None = None,
         min_confidence: float = 0.80,
         wait_seconds: float = 1.0,
+        app_package: str = APP_PACKAGE,
+        app_activity: str = APP_ACTIVITY,
     ) -> None:
         self.recognizer = recognizer
         self.backend = backend
         self.screenshot_provider = screenshot_provider
         self.min_confidence = min_confidence
         self.wait_seconds = wait_seconds
+        self.app_package = app_package
+        self.app_activity = app_activity
+
+    def _ensure_app_foreground(self) -> ActionResult:
+        if self.backend.is_app_foreground(self.app_package, self.app_activity):
+            return ActionResult(
+                "app_check",
+                "executed",
+                "app_foreground",
+                success=True,
+                action="ensure_app_foreground",
+                message="app_already_foreground",
+            )
+        return self.backend.launch_app(self.app_package, self.app_activity, reason="return_home")
 
     def return_home(self, *, max_back_steps: int = 5) -> ControlResult:
         state = self._recognize()
@@ -63,13 +82,16 @@ class CityWarController:
                 message="already_home",
             )
 
-        last_result = ActionResult(
-            "press_back",
-            "skipped_max_actions_reached",
-            "home_not_found",
-            success=False,
-            action="press_back",
-        )
+        last_result = self._ensure_app_foreground()
+        if not last_result.success:
+            return ControlResult(
+                name="return_home",
+                state_before=state,
+                action_result=last_result,
+                state_after=self._recognize(),
+                success=False,
+                message="app_not_foreground",
+            )
         for _ in range(max_back_steps):
             last_result = self.backend.keyevent("BACK", "return_home")
             after = self._recognize()

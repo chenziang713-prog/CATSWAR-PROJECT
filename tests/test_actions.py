@@ -72,3 +72,55 @@ def test_action_result_has_complete_fields() -> None:
         "success", "action", "message", "clicked_pos", "duration",
         "error", "action_type", "result", "reason",
     }
+
+
+def test_is_app_foreground_true_when_activity_in_dumpsys(tmp_path) -> None:
+    commands: list[list[str]] = []
+    adb = tmp_path / "adb.exe"
+    adb.touch()
+    foreground_output = (
+        b"ACTIVITY com.zeptolab.cats.google/com.zeptolab.cats.CATSActivity\n"
+    )
+
+    def runner(command, **kwargs):
+        commands.append(command)
+        if command[-1] == "activities":
+            return subprocess.CompletedProcess(command, 0, foreground_output, b"")
+        return subprocess.CompletedProcess(command, 0, b"", b"")
+
+    backend = AdbActionBackend(
+        adb_path=adb,
+        adb_serial="emulator-5556",
+        runner=runner,
+        sleep=lambda _: None,
+    )
+    assert backend.is_app_foreground("com.zeptolab.cats.google", "com.zeptolab.cats.CATSActivity") is True
+    assert commands[0][-3:] == ["dumpsys", "activity", "activities"]
+
+
+def test_is_app_foreground_false_when_activity_missing(tmp_path) -> None:
+    adb = tmp_path / "adb.exe"
+    adb.touch()
+    backend = AdbActionBackend(
+        adb_path=adb,
+        adb_serial="emulator-5556",
+        runner=lambda command, **_: subprocess.CompletedProcess(command, 0, b"OTHER ACTIVE APP\n", b""),
+        sleep=lambda _: None,
+    )
+    assert backend.is_app_foreground("com.zeptolab.cats.google", "com.zeptolab.cats.CATSActivity") is False
+
+
+def test_launch_app_sends_am_start_command(tmp_path) -> None:
+    commands: list[list[str]] = []
+    adb = tmp_path / "adb.exe"
+    adb.touch()
+    backend = AdbActionBackend(
+        adb_path=adb,
+        adb_serial="emulator-5556",
+        runner=lambda command, **_: commands.append(command) or subprocess.CompletedProcess(command, 0, b"", b""),
+        sleep=lambda _: None,
+    )
+    result = backend.launch_app("com.zeptolab.cats.google", "com.zeptolab.cats.CATSActivity", "reason")
+    assert result.success is True
+    assert result.action == "launch_app"
+    assert commands[0][-5:] == ["shell", "am", "start", "-n", "com.zeptolab.cats.google/com.zeptolab.cats.CATSActivity"]
